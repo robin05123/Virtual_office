@@ -1,0 +1,151 @@
+<!-- File: public/index.html -->
+<!-- --- SAVE THIS CODE IN A FILE NAMED `index.html` INSIDE A `public` FOLDER --- -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Office Odyssey - Player Movement</title>
+    <style>
+        body { margin: 0; background-color: #1a202c; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <!-- Phaser.js library from a CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    <!-- Socket.IO client library from a CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
+    <script>
+        // --- PHASER GAME CONFIGURATION ---
+        const config = {
+            type: Phaser.AUTO,
+            parent: 'phaser-example',
+            width: 800,
+            height: 600,
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    debug: false,
+                    gravity: { y: 0 }
+                }
+            },
+            scene: {
+                preload: preload,
+                create: create,
+                update: update
+            }
+        };
+
+        const game = new Phaser.Game(config);
+
+        // --- PHASER SCENE FUNCTIONS ---
+        function preload() {
+            // Preload assets - using simple graphics for the hackathon
+            this.load.image('player', 'https://placehold.co/40x40/60A5FA/FFFFFF?text=P');
+            this.load.image('otherPlayer', 'https://placehold.co/40x40/F87171/FFFFFF?text=O');
+            this.load.image('background', 'https://placehold.co/800x600/2D3748/4A5568?text=Office+Floor');
+        }
+
+        function create() {
+            // Add background
+            this.add.image(400, 300, 'background');
+            
+            // `this.self` will be a reference to the current scene
+            const self = this;
+            this.socket = io("http://localhost:3000");
+            this.otherPlayers = this.physics.add.group(); // Group to hold other players
+
+            // --- SOCKET.IO EVENT LISTENERS ---
+            this.socket.on('currentPlayers', (players) => {
+                Object.keys(players).forEach((id) => {
+                    if (players[id].playerId === self.socket.id) {
+                        addPlayer(self, players[id]);
+                    } else {
+                        addOtherPlayers(self, players[id]);
+                    }
+                });
+            });
+
+            this.socket.on('newPlayer', (playerInfo) => {
+                addOtherPlayers(self, playerInfo);
+            });
+
+            this.socket.on('playerMoved', (playerInfo) => {
+                self.otherPlayers.getChildren().forEach((otherPlayer) => {
+                    if (playerInfo.playerId === otherPlayer.playerId) {
+                        // Smoothly move the other player's sprite to the new position
+                        self.tweens.add({
+                            targets: otherPlayer,
+                            x: playerInfo.x,
+                            y: playerInfo.y,
+                            duration: 200, // ms
+                            ease: 'Power2'
+                        });
+                    }
+                });
+            });
+
+            this.socket.on('playerDisconnected', (playerId) => {
+                self.otherPlayers.getChildren().forEach((otherPlayer) => {
+                    if (playerId === otherPlayer.playerId) {
+                        otherPlayer.destroy();
+                    }
+                });
+            });
+
+            // --- PLAYER INPUT ---
+            this.cursors = this.input.keyboard.createCursorKeys();
+            this.wasd = this.input.keyboard.addKeys('W,S,A,D');
+        }
+
+        function update() {
+            if (this.player) {
+                const speed = 200;
+                this.player.setVelocity(0);
+
+                // Horizontal movement
+                if (this.cursors.left.isDown || this.wasd.A.isDown) {
+                    this.player.setVelocityX(-speed);
+                } else if (this.cursors.right.isDown || this.wasd.D.isDown) {
+                    this.player.setVelocityX(speed);
+                }
+
+                // Vertical movement
+                if (this.cursors.up.isDown || this.wasd.W.isDown) {
+                    this.player.setVelocityY(-speed);
+                } else if (this.cursors.down.isDown || this.wasd.S.isDown) {
+                    this.player.setVelocityY(speed);
+                }
+
+                // Emit player's movement to the server
+                const x = this.player.x;
+                const y = this.player.y;
+                // Only emit if the position has changed
+                if (this.player.oldPosition && (x !== this.player.oldPosition.x || y !== this.player.oldPosition.y)) {
+                    this.socket.emit('playerMovement', { x: this.player.x, y: this.player.y });
+                }
+
+                // Save old position data
+                this.player.oldPosition = {
+                    x: this.player.x,
+                    y: this.player.y,
+                };
+            }
+        }
+
+        // --- HELPER FUNCTIONS ---
+        function addPlayer(self, playerInfo) {
+            self.player = self.physics.add.image(playerInfo.x, playerInfo.y, 'player').setOrigin(0.5, 0.5);
+            self.player.setCollideWorldBounds(true);
+        }
+
+        function addOtherPlayers(self, playerInfo) {
+            const otherPlayer = self.add.sprite(playerInfo.x, playerInfo.y, 'otherPlayer').setOrigin(0.5, 0.5);
+            otherPlayer.playerId = playerInfo.playerId;
+            self.otherPlayers.add(otherPlayer);
+        }
+    </script>
+</body>
+</html>

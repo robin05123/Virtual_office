@@ -1,0 +1,343 @@
+<!-- File: public/index.html -->
+<!-- --- SAVE THIS CODE IN A FILE NAMED `index.html` INSIDE A `public` FOLDER --- -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Office Odyssey - Proximity Chat</title>
+    <!-- *** FIX: Removed tldraw CSS link *** -->
+    <style>
+        body { 
+            margin: 0; 
+            background-color: #1a202c; 
+            color: white;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #name-form { text-align: center; }
+        #name-form h1 { margin-bottom: 1rem; }
+        #name-input { padding: 0.5rem; font-size: 1rem; border-radius: 4px; border: 1px solid #4A5568; background-color: #2D3748; color: white; margin-right: 0.5rem; }
+        #join-btn { padding: 0.5rem 1rem; font-size: 1rem; font-weight: bold; color: white; background-color: #4299E1; border: none; border-radius: 4px; cursor: pointer; }
+        
+        #video-chat-container { position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column; gap: 10px; z-index: 10; }
+        .video-container { position: relative; border: 2px solid #4A5568; border-radius: 8px; overflow: hidden; background-color: #2D3748; }
+        .video-container video { width: 200px; height: 150px; object-fit: cover; }
+        .video-container .name-tag { position: absolute; bottom: 5px; left: 5px; background-color: rgba(0, 0, 0, 0.5); color: white; padding: 2px 5px; border-radius: 3px; font-size: 12px; }
+        
+        #media-controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: none; gap: 10px; background-color: rgba(45, 55, 72, 0.8); padding: 10px; border-radius: 8px; z-index: 10; }
+        .control-btn { padding: 0.5rem 1rem; font-size: 1rem; font-weight: bold; color: white; background-color: #4A5568; border: none; border-radius: 4px; cursor: pointer; }
+        .control-btn.active { background-color: #ef4444; }
+
+        #whiteboard-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70vw; height: 70vh; background-color: #ffffff; border: 2px solid #4a5568; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: none; z-index: 20; }
+        #close-whiteboard-btn { position: absolute; top: -15px; right: -15px; width: 30px; height: 30px; background-color: #ef4444; color: white; border: 2px solid white; border-radius: 50%; cursor: pointer; font-weight: bold; z-index: 10; }
+        /* *** FIX: Style for the new canvas element *** */
+        #whiteboard-canvas { width: 100%; height: 100%; cursor: crosshair; }
+
+        #room-chat-container { 
+            position: absolute; 
+            top: 50%;
+            left: 20px;
+            transform: translateY(-50%);
+            width: 350px; 
+            background-color: #2d3748; 
+            border: 1px solid #4a5568; 
+            border-radius: 8px; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.4); 
+            display: none; 
+            flex-direction: column; 
+            z-index: 30; 
+            pointer-events: all;
+        }
+        #room-chat-header { padding: 10px; background-color: #4a5568; font-weight: bold; border-top-left-radius: 7px; border-top-right-radius: 7px; }
+        #room-chat-messages { height: 200px; overflow-y: auto; padding: 10px; }
+        .room-message { margin-bottom: 8px; }
+        .room-message .sender { font-weight: bold; color: #60A5FA; }
+        #room-chat-form { display: flex; border-top: 1px solid #4a5568; }
+        #room-chat-input { flex-grow: 1; background: #1a202c; border: none; color: white; padding: 10px; outline: none; }
+        #room-chat-submit { background: #4299E1; border: none; color: white; padding: 10px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div id="name-form">
+        <h1>Virtual Office Odyssey</h1>
+        <form id="join-form">
+            <input type="text" id="name-input" placeholder="Enter your name" required />
+            <button type="submit" id="join-btn">Join</button>
+        </form>
+    </div>
+    <div id="game-container" style="display: none;"></div>
+    <div id="video-chat-container"></div>
+    <div id="media-controls">
+        <button id="toggle-audio-btn" class="control-btn">Mute Audio</button>
+        <button id="toggle-video-btn" class="control-btn">Mute Video</button>
+    </div>
+    <div id="whiteboard-container">
+        <button id="close-whiteboard-btn">X</button>
+        <!-- *** FIX: Replaced tldraw div with a native canvas *** -->
+        <canvas id="whiteboard-canvas"></canvas>
+    </div>
+    <div id="room-chat-container">
+        <div id="room-chat-header">Project Room Chat</div>
+        <div id="room-chat-messages"></div>
+        <form id="room-chat-form">
+            <input id="room-chat-input" type="text" placeholder="Type a message..." autocomplete="off" />
+            <button id="room-chat-submit" type="submit">Send</button>
+        </form>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
+    <!-- *** FIX: Changed script to a regular script, no longer a module *** -->
+    <script>
+        const nameForm = document.getElementById('join-form');
+        const nameInput = document.getElementById('name-input');
+        const nameFormContainer = document.getElementById('name-form');
+        const gameContainer = document.getElementById('game-container');
+        const mediaControls = document.getElementById('media-controls');
+        const whiteboardContainer = document.getElementById('whiteboard-container');
+        const closeWhiteboardBtn = document.getElementById('close-whiteboard-btn');
+        const roomChatContainer = document.getElementById('room-chat-container');
+        const roomChatForm = document.getElementById('room-chat-form');
+        const roomChatInput = document.getElementById('room-chat-input');
+        const roomChatMessages = document.getElementById('room-chat-messages');
+        const whiteboardCanvas = document.getElementById('whiteboard-canvas');
+        
+        let game = null;
+
+        nameForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const playerName = nameInput.value;
+            if (playerName) {
+                nameFormContainer.style.display = 'none';
+                gameContainer.style.display = 'block';
+                startGame(playerName);
+            }
+        });
+        
+        closeWhiteboardBtn.addEventListener('click', () => { whiteboardContainer.style.display = 'none'; });
+        
+        roomChatForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (roomChatInput.value && game) {
+                game.scene.getScene('default').socket.emit('sendRoomMessage', {
+                    room: 'whiteboard-room',
+                    message: roomChatInput.value
+                });
+                roomChatInput.value = '';
+            }
+        });
+
+        function startGame(playerName) {
+            const config = {
+                type: Phaser.AUTO,
+                parent: 'game-container',
+                width: 800,
+                height: 600,
+                physics: { default: 'arcade', arcade: { debug: false, gravity: { y: 0 } } },
+                scene: { 
+                    key: 'default',
+                    preload, 
+                    create, 
+                    update, 
+                    init: function() { this.playerName = playerName; } 
+                }
+            };
+            game = new Phaser.Game(config);
+        }
+
+        function preload() {
+            this.load.image('player_bg', 'https://placehold.co/60x40/60A5FA/60A5FA');
+            this.load.image('other_player_bg', 'https://placehold.co/60x40/F87171/F87171');
+            this.load.image('background', 'https://placehold.co/800x600/2D3748/4A5568?text=Virtual+Office');
+            this.load.image('proximity-ring', 'https://placehold.co/80x60/FFFF00/00000000?text=+');
+        }
+
+        function create() {
+            this.add.image(400, 300, 'background');
+            const self = this;
+            this.socket = io("http://localhost:3000", { auth: { username: this.playerName } });
+            this.otherPlayers = this.physics.add.group();
+            
+            this.peerConnections = {};
+            this.localStream = null;
+            this.isInWhiteboardZone = false;
+
+            this.whiteboardZone = new Phaser.Geom.Rectangle(50, 50, 200, 150);
+            const graphics = this.add.graphics({ lineStyle: { width: 2, color: 0xffffff, alpha: 0.5 }, fillStyle: { color: 0xffffff, alpha: 0.1 } });
+            graphics.strokeRectShape(this.whiteboardZone);
+            graphics.fillRectShape(this.whiteboardZone);
+            this.add.text(150, 125, 'Project Room', { fontSize: '16px', fill: '#FFF' }).setOrigin(0.5);
+
+            navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+                .then(stream => {
+                    self.localStream = stream;
+                    mediaControls.style.display = 'flex';
+                    createVideoElement(self.socket.id, self.playerName, stream, true);
+                    setupMediaControls(self.localStream);
+                }).catch(err => console.error("Could not get user media", err));
+
+            setupSocketListeners(self);
+
+            this.cursors = this.input.keyboard.createCursorKeys();
+            // *** FIX: Removed WASD key bindings ***
+            // this.wasd = this.input.keyboard.addKeys('W,S,A,D');
+        }
+
+        function update() {
+            if (this.player) {
+                const speed = 200;
+                this.player.body.setVelocity(0);
+
+                // *** FIX: Removed WASD checks, now only using arrow keys ***
+                if (this.cursors.left.isDown) {
+                    this.player.body.setVelocityX(-speed);
+                } else if (this.cursors.right.isDown) {
+                    this.player.body.setVelocityX(speed);
+                }
+
+                if (this.cursors.up.isDown) {
+                    this.player.body.setVelocityY(-speed);
+                } else if (this.cursors.down.isDown) {
+                    this.player.body.setVelocityY(speed);
+                }
+
+                const { x, y } = this.player;
+                if (this.player.oldPosition && (x !== this.player.oldPosition.x || y !== this.player.oldPosition.y)) {
+                    this.socket.emit('playerMovement', { x, y });
+                }
+                this.player.oldPosition = { x, y };
+
+                if (this.localStream) {
+                    const proximityLimit = 150;
+                    let isNearSomeone = false;
+                    this.otherPlayers.getChildren().forEach(otherPlayer => {
+                        const distance = Phaser.Math.Distance.Between(x, y, otherPlayer.x, otherPlayer.y);
+                        const peerId = otherPlayer.playerId;
+                        if (distance <= proximityLimit) {
+                            isNearSomeone = true;
+                            otherPlayer.proximityRing.setVisible(true);
+                            if (!this.peerConnections[peerId]) createPeerConnection(this, peerId, true);
+                        } else {
+                            otherPlayer.proximityRing.setVisible(false);
+                            if (this.peerConnections[peerId]) closePeerConnection(this, peerId);
+                        }
+                    });
+                    this.player.proximityRing.setVisible(isNearSomeone);
+                }
+
+                const currentlyInZone = Phaser.Geom.Rectangle.Contains(this.whiteboardZone, x, y);
+                if (currentlyInZone && !this.isInWhiteboardZone) {
+                    this.isInWhiteboardZone = true;
+                    this.socket.emit('joinRoom', 'whiteboard-room');
+                    showWhiteboard(this.socket);
+                    roomChatContainer.style.display = 'flex';
+                } else if (!currentlyInZone && this.isInWhiteboardZone) {
+                    this.isInWhiteboardZone = false;
+                    this.socket.emit('leaveRoom', 'whiteboard-room');
+                    hideWhiteboard();
+                    roomChatContainer.style.display = 'none';
+                    roomChatMessages.innerHTML = '';
+                }
+            }
+        }
+
+        function setupSocketListeners(self) {
+            self.socket.on('currentPlayers', players => Object.values(players).forEach(p => p.playerId === self.socket.id ? addPlayer(self, p) : addOtherPlayers(self, p)));
+            self.socket.on('newPlayer', playerInfo => addOtherPlayers(self, playerInfo));
+            self.socket.on('playerDisconnected', playerId => {
+                self.otherPlayers.getChildren().forEach(p => { if (playerId === p.playerId) p.destroy(); });
+                closePeerConnection(self, playerId);
+            });
+            self.socket.on('playerMoved', pInfo => self.otherPlayers.getChildren().forEach(p => {
+                if (pInfo.playerId === p.playerId) self.tweens.add({ targets: p, x: pInfo.x, y: pInfo.y, duration: 200, ease: 'Power2' });
+            }));
+            
+            self.socket.on('offer', payload => handleOffer(self, payload));
+            self.socket.on('answer', payload => handleAnswer(self, payload));
+            self.socket.on('ice-candidate', payload => handleIceCandidate(self, payload));
+            
+            self.socket.on('whiteboardDraw', (data) => {
+                const ctx = whiteboardCanvas.getContext('2d');
+                if (ctx) {
+                    ctx.beginPath();
+                    ctx.moveTo(data.x1, data.y1);
+                    ctx.lineTo(data.x2, data.y2);
+                    ctx.stroke();
+                }
+            });
+
+            self.socket.on('newRoomMessage', (data) => {
+                const messageElement = document.createElement('div');
+                messageElement.classList.add('room-message');
+                messageElement.innerHTML = `<span class="sender">${data.senderName}:</span> ${data.message}`;
+                roomChatMessages.appendChild(messageElement);
+                roomChatMessages.scrollTop = roomChatMessages.scrollHeight;
+            });
+        }
+        
+        function handleOffer(self, payload) { createPeerConnection(self, payload.callerId, false); const pc = self.peerConnections[payload.callerId]; if (pc) { pc.setRemoteDescription(new RTCSessionDescription(payload.offer)).then(() => pc.createAnswer()).then(answer => pc.setLocalDescription(answer)).then(() => self.socket.emit('answer', { target: payload.callerId, callerId: self.socket.id, answer: pc.localDescription })); } }
+        function handleAnswer(self, payload) { const pc = self.peerConnections[payload.callerId]; if (pc) pc.setRemoteDescription(new RTCSessionDescription(payload.answer)); }
+        function handleIceCandidate(self, payload) { const pc = self.peerConnections[payload.from]; if (pc) pc.addIceCandidate(new RTCIceCandidate(payload.candidate)); }
+        function createPeerConnection(self, peerId, isInitiator) { if (self.peerConnections[peerId] || !self.localStream) return; const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }); self.peerConnections[peerId] = pc; self.localStream.getTracks().forEach(track => pc.addTrack(track, self.localStream)); pc.onicecandidate = e => e.candidate && self.socket.emit('ice-candidate', { target: peerId, from: self.socket.id, candidate: e.candidate }); pc.ontrack = e => { const remotePlayer = self.otherPlayers.getChildren().find(p => p.playerId === peerId); createVideoElement(peerId, remotePlayer?.playerName || 'Guest', e.streams[0], false); }; if (isInitiator) { pc.createOffer().then(offer => pc.setLocalDescription(offer)).then(() => self.socket.emit('offer', { target: peerId, callerId: self.socket.id, offer: pc.localDescription })); } }
+        function closePeerConnection(self, peerId) { if (self.peerConnections[peerId]) { self.peerConnections[peerId].close(); delete self.peerConnections[peerId]; const videoElement = document.getElementById(`video-container-${peerId}`); if (videoElement) videoElement.remove(); } }
+        function createVideoElement(id, name, stream, isMuted) { const containerId = `video-container-${id}`; if (document.getElementById(containerId)) return; const videoContainer = document.createElement('div'); videoContainer.id = containerId; videoContainer.className = 'video-container'; const video = document.createElement('video'); video.id = `video-${id}`; video.srcObject = stream; video.autoplay = true; video.playsInline = true; video.muted = isMuted; const nameTag = document.createElement('div'); nameTag.className = 'name-tag'; nameTag.textContent = name; videoContainer.appendChild(video); videoContainer.appendChild(nameTag); document.getElementById('video-chat-container').appendChild(videoContainer); }
+        function setupMediaControls(localStream) { const audioBtn = document.getElementById('toggle-audio-btn'); const videoBtn = document.getElementById('toggle-video-btn'); audioBtn.addEventListener('click', () => { localStream.getAudioTracks().forEach(t => t.enabled = !t.enabled); audioBtn.textContent = localStream.getAudioTracks()[0].enabled ? 'Mute Audio' : 'Unmute Audio'; audioBtn.classList.toggle('active', !localStream.getAudioTracks()[0].enabled); }); videoBtn.addEventListener('click', () => { localStream.getVideoTracks().forEach(t => t.enabled = !t.enabled); videoBtn.textContent = localStream.getVideoTracks()[0].enabled ? 'Mute Video' : 'Unmute Video'; videoBtn.classList.toggle('active', !localStream.getVideoTracks()[0].enabled); }); }
+        function addPlayer(self, playerInfo) { const container = self.add.container(playerInfo.x, playerInfo.y); container.setSize(60, 40); const sprite = self.add.sprite(0, 0, 'player_bg'); const name = self.add.text(0, 0, playerInfo.playerName, { fontSize: '12px', fill: '#FFFFFF', align: 'center' }).setOrigin(0.5, 0.5); const ring = self.add.sprite(0, 0, 'proximity-ring').setVisible(false); container.add([ring, sprite, name]); container.proximityRing = ring; self.physics.world.enable(container); container.body.setCollideWorldBounds(true); self.player = container; }
+        function addOtherPlayers(self, playerInfo) { const container = self.add.container(playerInfo.x, playerInfo.y); container.setSize(60, 40); container.playerId = playerInfo.playerId; container.playerName = playerInfo.playerName; const sprite = self.add.sprite(0, 0, 'other_player_bg'); const name = self.add.text(0, 0, playerInfo.playerName, { fontSize: '12px', fill: '#FFFFFF', align: 'center' }).setOrigin(0.5, 0.5); const ring = self.add.sprite(0, 0, 'proximity-ring').setVisible(false); container.add([ring, sprite, name]); container.proximityRing = ring; self.otherPlayers.add(container); }
+        
+        function showWhiteboard(socket) {
+            whiteboardContainer.style.display = 'block';
+            const ctx = whiteboardCanvas.getContext('2d');
+            if (!ctx) return;
+
+            whiteboardCanvas.width = whiteboardContainer.clientWidth;
+            whiteboardCanvas.height = whiteboardContainer.clientHeight;
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+
+            let isDrawing = false;
+            let lastX = 0;
+            let lastY = 0;
+
+            const draw = (e) => {
+                if (!isDrawing) return;
+                const rect = whiteboardCanvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                ctx.beginPath();
+                ctx.moveTo(lastX, lastY);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+                
+                socket.emit('whiteboardDraw', { room: 'whiteboard-room', x1: lastX, y1: lastY, x2: x, y2: y });
+                [lastX, lastY] = [x, y];
+            };
+
+            const startDrawing = (e) => {
+                isDrawing = true;
+                const rect = whiteboardCanvas.getBoundingClientRect();
+                [lastX, lastY] = [e.clientX - rect.left, e.clientY - rect.top];
+            };
+
+            const stopDrawing = () => isDrawing = false;
+
+            whiteboardCanvas.addEventListener('mousedown', startDrawing);
+            whiteboardCanvas.addEventListener('mousemove', draw);
+            whiteboardCanvas.addEventListener('mouseup', stopDrawing);
+            whiteboardCanvas.addEventListener('mouseout', stopDrawing);
+        }
+
+        function hideWhiteboard() {
+            whiteboardContainer.style.display = 'none';
+        }
+    </script>
+</body>
+</html>
