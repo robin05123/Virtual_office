@@ -1,0 +1,96 @@
+<!-- File: public/index.html -->
+<!-- --- SAVE THIS CODE IN A FILE NAMED `index.html` INSIDE A `public` FOLDER --- -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Office Odyssey - MVP</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column; /* Arrange items vertically */
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f2f5;
+        }
+        #message-container {
+            padding: 2rem 4rem;
+            border-radius: 12px;
+            background-color: white;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            font-size: 2rem;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 1rem; /* Add space below the message */
+        }
+        #disconnect-btn {
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            font-weight: bold;
+            color: white;
+            background-color: #ef4444; /* Red color */
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        #disconnect-btn:hover {
+            background-color: #dc2626;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="message-container">Connecting to server...</div>
+    <button id="disconnect-btn">Disconnect</button>
+
+    <!-- 1. Include the Socket.IO client library from a CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
+    <script>
+        // 2. Connect to the Socket.IO server by specifying the server's address
+        const socket = io("http://localhost:3000");
+
+        // 3. Get the HTML elements
+        const messageContainer = document.getElementById('message-container');
+        const disconnectBtn = document.getElementById('disconnect-btn');
+
+        // 4. Listen for the 'connect' event
+        socket.on('connect', () => {
+            console.log('Successfully connected to the server on port 3000!');
+            messageContainer.textContent = 'Connected!';
+        });
+
+        // 5. Listen for the 'message' event from the server
+        socket.on('message', (data) => {
+            console.log('Message received from server:', data);
+            // Update the HTML to display the "Hello World" message
+            messageContainer.textContent = data;
+        });
+
+        // 6. Listen for the 'disconnect' event
+        socket.on('disconnect', () => {
+            console.log('Disconnected from the server.');
+            messageContainer.textContent = 'Disconnected.';
+            disconnectBtn.disabled = true; // Disable button after disconnecting
+            disconnectBtn.style.backgroundColor = '#9ca3af'; // Gray out button
+        });
+        
+        // Handle connection errors
+        socket.on('connect_error', (err) => {
+            console.error('Connection failed:', err.message);
+            messageContainer.textContent = 'Connection Failed. Is the server running on port 3000?';
+        });
+
+        // 7. Add click event listener to the disconnect button
+        disconnectBtn.addEventListener('click', () => {
+            console.log('Disconnecting from server...');
+            socket.disconnect();
+        });
+    </script>
+</body>
+</html>
